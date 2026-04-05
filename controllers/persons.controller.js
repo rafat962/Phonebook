@@ -1,30 +1,27 @@
-import data from "../data/Phonebook.json" with { type: "json" };
-//  data
-let persons = [...data];
+import Person from "../models/Person.js";
 
+// 3.13 + 3.18 — GET /api/persons
 export const getAllPersons = async (req, res, next) => {
     try {
+        const persons = await Person.find({});
         res.status(200).json({
             status: "success",
             personData: persons,
         });
     } catch (err) {
-        res.status(404).json({
-            status: "Error",
-            message: err.message,
-        });
+        next(err);
     }
 };
 
+// 3.18 — GET /api/persons/:id
 export const getPersonByID = async (req, res, next) => {
     try {
-        const id = req.params.id;
-        const person = persons.find((item) => item.id == id);
+        const person = await Person.findById(req.params.id);
 
         if (!person) {
             return res.status(404).json({
                 status: "Error",
-                message: `Person with id ${id} not found`,
+                message: `Person with id ${req.params.id} not found`,
             });
         }
 
@@ -33,38 +30,30 @@ export const getPersonByID = async (req, res, next) => {
             person,
         });
     } catch (err) {
-        res.status(404).json({
-            status: "Error",
-            message: err.message,
-        });
+        next(err);
     }
 };
 
-// 3.4 — DELETE
+// 3.15 — DELETE /api/persons/:id
 export const deletePerson = async (req, res, next) => {
     try {
-        const id = req.params.id;
-        const person = persons.find((item) => item.id == id);
+        const person = await Person.findByIdAndDelete(req.params.id);
 
         if (!person) {
             return res.status(404).json({
                 status: "Error",
-                message: `Person with id ${id} not found`,
+                message: `Person with id ${req.params.id} not found`,
             });
         }
 
-        persons = persons.filter((item) => item.id != id);
-
         res.status(204).end();
     } catch (err) {
-        res.status(500).json({
-            status: "Error",
-            message: err.message,
-        });
+        next(err);
     }
 };
 
-//POST /api/persons
+// 3.14 — POST /api/persons
+// 3.17 — if name exists → update number instead
 export const createPerson = async (req, res, next) => {
     try {
         const { name, number } = req.body;
@@ -76,53 +65,50 @@ export const createPerson = async (req, res, next) => {
             });
         }
 
-        const duplicate = persons.find(
-            (item) => item.name.toLowerCase() === name.toLowerCase(),
-        );
-        if (duplicate) {
-            return res.status(409).json({
-                status: "Error",
-                error: "name must be unique",
+        // 3.17: check for existing name → update instead of creating
+        const existing = await Person.findOne({
+            name: { $regex: new RegExp(`^${name}$`, "i") },
+        });
+
+        if (existing) {
+            const updated = await Person.findByIdAndUpdate(
+                existing._id,
+                { number },
+                { new: true },
+            );
+            return res.status(200).json({
+                status: "success",
+                person: updated,
             });
         }
 
-        const newPerson = {
-            id: String(Math.floor(Math.random() * 1_000_000)),
-            name,
-            number,
-        };
-
-        persons = [...persons, newPerson];
+        const person = new Person({ name, number });
+        const savedPerson = await person.save();
 
         res.status(201).json({
             status: "success",
-            person: newPerson,
+            person: savedPerson,
         });
     } catch (err) {
-        res.status(500).json({
-            status: "Error",
-            message: err.message,
-        });
+        next(err);
     }
 };
 
-// 3.2 GET /info
+// 3.18 — GET /info
 export const getInfo = async (req, res, next) => {
     try {
+        const count = await Person.countDocuments();
         const time = new Date().toString();
 
         res.status(200).send(`
             <html>
               <body style="font-family: sans-serif; padding: 2rem;">
-                <p>Phonebook has info for <strong>${persons.length}</strong> people</p>
+                <p>Phonebook has info for <strong>${count}</strong> people</p>
                 <p>${time}</p>
               </body>
             </html>
         `);
     } catch (err) {
-        res.status(500).json({
-            status: "Error",
-            message: err.message,
-        });
+        next(err);
     }
 };
